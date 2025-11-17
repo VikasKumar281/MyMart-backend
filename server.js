@@ -21,20 +21,14 @@ const port = process.env.PORT || 4000;
 app.use(express.json());
 app.use(cookieParser());
 
-const allowedOrigins = ["http://localhost:5173", "https://mymart-bay.vercel.app"];
+const allowedOrigins = [
+  "http://localhost:5173",
+  "https://mymart-bay.vercel.app"
+];
 
 app.use(
   cors({
-    origin: (origin, callback) => {
-      // Allow requests without origin (e.g. Postman)
-      if (!origin) return callback(null, true);
-
-      if (allowedOrigins.includes(origin)) {
-        return callback(null, true);
-      } else {
-        return callback(new Error("Not allowed by CORS"));
-      }
-    },
+    origin: allowedOrigins,
     credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
@@ -43,7 +37,7 @@ app.use(
 
 
 app.use((req, res, next) => {
-  console.log("Request from:", req.headers.origin);
+  res.header("Access-Control-Allow-Credentials", "true");
   next();
 });
 
