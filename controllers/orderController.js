@@ -65,7 +65,15 @@ export const placeOrderCOD = async (req, res) => {
   }
 };
 
-const stripeKey = () => (process.env.STRIPE_SECRET_KEY || "").trim();
+const stripeKey = () => (process.env.STRIPE_SECRET_KEY || "").trim().replace(/^["']|["']$/g, "");
+
+const listUserOrders = (userId) =>
+  Order.find({
+    userId: String(userId),
+    $or: [{ paymentType: "COD" }, { isPaid: true }],
+  })
+    .populate("items.product address")
+    .sort({ createdAt: -1 });
 
 // Online payment stays in test mode. A live secret key is rejected so a real card is never charged.
 export const paymentMode = async (req, res) => {
@@ -227,8 +235,9 @@ export const verifyStripe = async (req, res) => {
 
     const stripe = new Stripe(key);
     const session = await stripe.checkout.sessions.retrieve(sessionId);
+    const order = await Order.findById(session.metadata?.orderId);
 
-    if (session.metadata?.userId !== String(userId)) {
+    if (!order || String(order.userId) !== String(userId)) {
       return res.json({ success: false, message: "Not Authorized" });
     }
 
@@ -236,10 +245,12 @@ export const verifyStripe = async (req, res) => {
       return res.json({ success: false, message: "Payment not completed" });
     }
 
-    await Order.findByIdAndUpdate(session.metadata.orderId, { isPaid: true });
+    order.isPaid = true;
+    await order.save();
     await User.findByIdAndUpdate(userId, { cartItems: {} });
+    const orders = await listUserOrders(userId);
 
-    return res.json({ success: true, message: "Payment successful" });
+    return res.json({ success: true, message: "Payment successful", orders });
   } catch (error) {
     return res.json({ success: false, message: error.message });
   }
@@ -248,13 +259,7 @@ export const verifyStripe = async (req, res) => {
 // Get Orders by User ID : /api/order/user
 export const getUserOrders = async (req, res) => {
   try {
-    const userId = req.userId || req.body.userId;
-    const orders = await Order.find({
-      userId,
-      $or: [{ paymentType: "COD" }, { isPaid: true }],
-    })
-      .populate("items.product address")
-      .sort({ createdAt: -1 });
+    const orders = await listUserOrders(req.userId || req.body.userId);
     res.json({ success: true, orders });
   } catch (error) {
     res.json({ success: false, message: error.message });
