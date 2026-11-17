@@ -1,4 +1,6 @@
 import jwt from "jsonwebtoken";
+import bcrypt from "bcryptjs";
+import User from "../models/User.js";
 import { authCookieOptions, clearAuthCookieOptions } from "../utils/cookies.js";
 
 // Login Seller : /api/seller/login
@@ -6,15 +8,26 @@ export const sellerLogin = async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    if (password === process.env.SELLER_PASSWORD && email === process.env.SELLER_EMAIL) {
-      const token = jwt.sign({ email }, process.env.JWT_SECRET, { expiresIn: "7d" });
+        const user = await User.findOne({ email });
+        const userMatch = user && (await bcrypt.compare(password, user.password));
+        const adminMatch = password === process.env.SELLER_PASSWORD && email === process.env.SELLER_EMAIL;
 
-      res.cookie("sellerToken", token, authCookieOptions());
+        if (!userMatch && !adminMatch) {
+            return res.json({ success: false, message: "Invalid Credentials" });
+        }
 
-      return res.json({ success: true, message: "Logged In", token });
-    }
+        const token = jwt.sign(
+            {
+                email,
+                id: userMatch ? String(user._id) : "",
+                role: adminMatch ? "admin" : "seller",
+            },
+            process.env.JWT_SECRET,
+            { expiresIn: "7d" }
+        );
 
-    return res.json({ success: false, message: "Invalid Credentials" });
+        res.cookie("sellerToken", token, authCookieOptions());
+        return res.json({ success: true, message: "Logged In", token });
   } catch (error) {
     res.json({ success: false, message: error.message });
   }
@@ -23,7 +36,7 @@ export const sellerLogin = async (req, res) => {
 // Seller isAuth : /api/seller/is-auth
 export const isSellerAuth = async (req, res) => {
   try {
-    return res.json({ success: true });
+        return res.json({ success: true, email: req.seller?.email || "" });
   } catch (error) {
     res.json({ success: false, message: error.message });
   }

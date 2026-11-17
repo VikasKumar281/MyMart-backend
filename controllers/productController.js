@@ -46,7 +46,12 @@ export const addProduct = async (req, res) => {
 
     const imagesUrl = await Promise.all(images.map((item) => uploadBuffer(item).then((result) => result.secure_url)));
 
-    await Product.create({ ...productData, image: imagesUrl });
+    await Product.create({
+      ...productData,
+      image: imagesUrl,
+      sellerId: req.seller?.id || "",
+      sellerEmail: req.seller?.email || "",
+    });
 
     res.json({ success: true, message: "Product Added" });
   } catch (error) {
@@ -58,6 +63,27 @@ export const addProduct = async (req, res) => {
 export const productList = async (req, res) => {
   try {
     const products = await Product.find({});
+    res.json({ success: true, products });
+  } catch (error) {
+    res.json({ success: false, message: error.message });
+  }
+};
+
+const sellerFilter = (seller) => {
+  if (!seller || seller.role === "admin") return {};
+  return { sellerId: seller.id };
+};
+
+const ownsProduct = (product, seller) => {
+  if (!seller) return false;
+  if (seller.role === "admin") return true;
+  return product.sellerId && product.sellerId === seller.id;
+};
+
+// Products added by the logged-in seller : /api/product/seller
+export const sellerProductList = async (req, res) => {
+  try {
+    const products = await Product.find(sellerFilter(req.seller)).sort({ createdAt: -1 });
     res.json({ success: true, products });
   } catch (error) {
     res.json({ success: false, message: error.message });
@@ -79,6 +105,10 @@ export const productById = async (req, res) => {
 export const changeStock = async (req, res) => {
   try {
     const { id, inStock } = req.body;
+    const product = await Product.findById(id);
+    if (!product || !ownsProduct(product, req.seller)) {
+      return res.json({ success: false, message: "Not Authorized" });
+    }
     await Product.findByIdAndUpdate(id, { inStock });
     res.json({ success: true, message: "Stock Updated" });
   } catch (error) {
